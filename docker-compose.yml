@@ -1,0 +1,187 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:17.5-alpine
+    container_name: pgdb
+    restart: always
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      # POSTGRES_DB: wallet_db
+      POSTGRES_MULTIPLE_DATABASES: ${POSTGRES_MULTIPLE_DATABASES}
+    volumes:
+      - ./scripts/create-multiple-postgresql-databases.sh:/docker-entrypoint-initdb.d/create-multiple-postgresql-databases.sh
+      - ./data/pgsql:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U admin -d wallet_db" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks: [ backend ]
+
+  mongodb:
+    image: mongo:8.0
+    container_name: mongodb
+    restart: always
+    ports:
+      - 27017:27017
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+      MONGO_INITDB_DATABASE: ${MONGO_INITDB_DATABASE}
+    volumes:
+      - ./data/mongo:/data/db
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --username root --password password --authenticationDatabase admin --eval 'db.runCommand({ ping: 1 })' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks: [ backend ]
+  
+  redis:
+    image: redis:8.0.3-alpine
+    container_name: redis
+    restart: always
+    ports:
+      - 6379:6379
+    volumes:
+      - ./data/redis:/data
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks: [ backend ]
+  
+  rabbitmq:
+    image: rabbitmq:4.1.2-management-alpine
+    container_name: rabbitmq
+    restart: always
+    ports:
+      - 5672:5672
+      - 15672:15672
+      - 5552:5552   # Stream protocol
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: "-rabbitmq_stream advertised_host rabbitmq"
+    volumes:
+      - ./data/rabbitmq:/var/lib/rabbitmq/
+      - ./data/rabbitmq/log:/var/log/rabbitmq
+      - ./scripts/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [ backend ]
+  
+  bankservice:
+    build:
+      context: ./BankService
+      dockerfile: Dockerfile
+    container_name: BankService
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      # Postgres
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${BANK_SERVICE_PG_DB}
+      DB_USER: ${POSTGRES_USER}
+      DB_PASS: ${POSTGRES_PASSWORD}
+      # Mongo
+      MONGO_HOST: mongodb
+      MONGO_PORT: 27017
+      MONGO_DB: ${MONGO_INITDB_DATABASE}
+      MONGO_USER: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_PASS: ${MONGO_INITDB_ROOT_PASSWORD}
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      # RabbitMQ
+      RABBIT_HOST: rabbitmq
+      RABBIT_PORT: 5672
+      RABBIT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBIT_PASS: ${RABBITMQ_DEFAULT_PASS}
+      # Downstream wallet service base URL (docker DNS name)
+      WALLET_BASE_URL: http://localhost:8082
+      SHARED_SECRET: ${SHARED_SECRET}
+    ports:
+      - "8081:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health | grep -q 'UP'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [ backend ]
+
+  walletservice:
+    build:
+      context: ./WalletService
+      dockerfile: Dockerfile
+    container_name: WalletService
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      # Postgres
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${WALLET_SERVICE_PG_DB}
+      DB_USER: ${POSTGRES_USER}
+      DB_PASS: ${POSTGRES_PASSWORD}
+      # Mongo
+      MONGO_HOST: mongodb
+      MONGO_PORT: 27017
+      MONGO_DB: ${MONGO_INITDB_DATABASE}
+      MONGO_USER: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_PASS: ${MONGO_INITDB_ROOT_PASSWORD}
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      # RabbitMQ
+      RABBIT_HOST: rabbitmq
+      RABBIT_PORT: 5672
+      RABBIT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBIT_PASS: ${RABBITMQ_DEFAULT_PASS}
+      # Downstream wallet service base URL (docker DNS name)
+      BANK_BASE_URL: http://localhost:8081
+      SHARED_SECRET: ${SHARED_SECRET}
+    ports:
+      - "8082:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health | grep -q 'UP'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [ backend ]
+
+volumes:
+  pg_data:
+  mongo_data:
+  redis_data:
+  rabbitmq_data:
+
+
+networks:
+  backend:
+    driver: bridge

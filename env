@@ -1,0 +1,16 @@
+POSTGRES_MULTIPLE_DATABASES="bankd_db, wallet_db"
+POSTGRES_USER=admin
+POSTGRES_PASSWORD=pgsql_password
+
+MONGO_INITDB_DATABASE=wallet_to_bank
+MONGO_INITDB_ROOT_USERNAME=root
+MONGO_INITDB_ROOT_PASSWORD=password
+
+RABBITMQ_DEFAULT_USER=guest
+RABBITMQ_DEFAULT_PASS=guest
+
+BANK_SERVICE_PG_DB=bank_db
+WALLET_SERVICE_PG_DB=wallet_db
+
+# Service to service auth/token (optional demo value)
+SHARED_SECRET=sample_secret_key

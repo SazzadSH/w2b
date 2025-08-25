@@ -28,4 +28,7 @@ Highly Scalable, High Performance &amp; Secured Event Driven Microservices for f
 
 ## How to Run
 ### With Docker:
-* Run in CLI: "docker-compose up" or "docker-compose up -d" (for detached mode)
+Run the commands in CLI:
+* **Build**: ```docker compose build```
+* **Start**: ```docker compose up``` or ```docker compose up -d``` (for detached mode)
+* **Follow logs**: ```docker compose logs -f walletservice bankservice```

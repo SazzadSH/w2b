@@ -1,1 +1,20 @@
 .DS_Store
+
+#ignore everything inside data directory
+data/**
+
+#keep these
+!data/
+!data/pgsql/
+!data/mongo/
+!data/redis/
+!data/rabbitmq/
+!data/rabbitmq/log/
+
+#keep gitkeep
+!data/.gitkeep
+!data/pgsql/.gitkeep
+!data/mongo/.gitkeep
+!data/redis/.gitkeep
+!data/rabbitmq/.gitkeep
+!data/rabbitmq/log/.gitkeep
